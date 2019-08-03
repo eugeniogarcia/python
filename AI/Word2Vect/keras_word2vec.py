@@ -54,6 +54,7 @@ def build_dataset(words, n_words):
     reversed_dictionary = dict(zip(dictionary.values(), dictionary.keys()))
     return data, count, dictionary, reversed_dictionary
 
+
 def collect_data(vocabulary_size=10000):
     url = 'http://mattmahoney.net/dc/'
     filename = maybe_download('text8.zip', url, 31344016)
@@ -63,6 +64,7 @@ def collect_data(vocabulary_size=10000):
                                                                 vocabulary_size)
     del vocabulary  # Hint to reduce memory.
     return data, count, dictionary, reverse_dictionary
+
 
 vocab_size = 10000
 data, count, dictionary, reverse_dictionary = collect_data(vocabulary_size=vocab_size)
@@ -89,6 +91,7 @@ input_target = Input((1,))
 input_context = Input((1,))
 
 embedding = Embedding(vocab_size, vector_dim, input_length=1, name='embedding')
+
 target = embedding(input_target)
 target = Reshape((vector_dim, 1))(target)
 context = embedding(input_context)
@@ -134,6 +137,7 @@ class SimilarityCallback:
             out = validation_model.predict_on_batch([in_arr1, in_arr2])
             sim[i] = out
         return sim
+    
 sim_cb = SimilarityCallback()
 
 arr_1 = np.zeros((1,))
