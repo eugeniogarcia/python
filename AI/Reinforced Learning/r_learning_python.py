@@ -1,6 +1,7 @@
 import gym
 import numpy as np
 from keras.models import Sequential
+from tensorflow.keras import backend
 from keras.layers import Dense, InputLayer
 import matplotlib.pylab as plt
 

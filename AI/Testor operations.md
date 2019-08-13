@@ -20,6 +20,27 @@ The returned tensor's dimension i will correspond to the input dimension perm[i]
 
 Casts a tensor to a new type.  
 
+
+`tf.unstack`
+
+Unpacks num tensors from value by chipping it along the axis dimension. If num is not specified (the default), it is inferred from value's shape. If value.shape[axis] is not known, ValueError is raised.  
+  
+For example, given a tensor of shape (A, B, C, D);  
+  
+If axis == 0 then the i'th tensor in output is the slice value[i, :, :, :] and each tensor in output will have shape (B, C, D). (Note that the dimension unpacked along is gone, unlike split).  
+   
+If axis == 1 then the i'th tensor in output is the slice value[:, i, :, :] and each tensor in output will have shape (A, C, D). Etc.  
+
+```
+tf.unstack(
+    value,
+    num=None,
+    axis=0,
+    name='unstack'
+)
+```
+
+
 `tf.image.resize_with_crop_or_pad`  
 
 Crops and/or pads an image to a target width and height. Resizes an image to a target width and height by either centrally cropping the image or padding it evenly with zeros. If width or height is greater than the specified target_width or target_height respectively, this op centrally crops along that dimension. If width or height is smaller than the specified target_width or target_height respectively, this op centrally pads with 0 along that dimension.
