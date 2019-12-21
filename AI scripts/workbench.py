@@ -1,6 +1,4 @@
-from tensorflow import keras
-from tensorflow.keras import layers
-from tensorflow.keras import Sequential
+from tensorflow.keras import layers, Sequential
 
 max_features=1000
 
