@@ -278,8 +278,8 @@ We can combine several recurrent layers - as we may with any other type of layer
 model = Sequential()
 
 model.add(Embedding(10000, 8))
-model.add(LSTM(32),return_sequences=True)
-model.add(LSTM(32),return_sequences=True)
+model.add(LSTM(32,return_sequences=True))
+model.add(LSTM(32,return_sequences=True))
 model.add(LSTM(32))
 model.add(Dense(1, activation='sigmoid'))
 ``` 
