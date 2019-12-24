@@ -419,7 +419,13 @@ class miModelo(tf.keras.Model):
     return tf.nn.sigmoid(x)
 ```
 
-# Personalizacion
+# Otras Personalizaciones
+
+Ademas de las capas y del modelo podemos personalizar:
+
+- Funciones de error
+- Metricas
+- Callbacks
 
 ## Personalizando la Funcion de error
 
@@ -684,7 +690,7 @@ Called at the beginning of an epoch during training.
 - on_epoch_end(self, epoch, logs=None)
 Called at the end of an epoch during training.
 
-## Parar el entrenamiento
+### Parar el entrenamiento
 
 ```py
 class EarlyStoppingAtMinLoss(tf.keras.callbacks.Callback):
@@ -733,6 +739,45 @@ class EarlyStoppingAtMinLoss(tf.keras.callbacks.Callback):
 ```
 
 Notese como con __self.model.stop_training__ podemos para el entrenamiento.
+
+### Caso practico
+
+Vamos a mostrar como utilizar dos callbacks, el de tensorflow y el de early stop. El de tensorflow:
+
+```py
+tensorboard_cbk=keras.callbacks.TensorBoard(
+  log_dir='.\\entrena',
+  histogram_freq=1, 
+  update_freq='epoch', # indica que se generaran muestras de datos por cada epoch
+#  update_freq='batch', # indica que se generaran muestras de datos por cada batch
+  profile_batch = 0)
+```
+
+Lo mas destacado aqui es que tuve que incluir `profile_batch = 0` porque de lo contrario se disparaba un error que indicaba que no se pudo parar el profiler. El callback de parada temprana:
+
+```py
+#Callbacks. Parada anticipada del entrenamiento
+paradaTemprana_cbk=keras.callbacks.EarlyStopping(
+        # Observa la funcion de perdida - tipicamente usariamos val_loss en lugar de loss
+        monitor='val_loss',
+        # Si la funcion de error cambia menos de min_delta
+        min_delta=1e-3,
+        # en patience batchs, para
+        patience=6,
+        verbose=1)
+```
+
+Finalmente los utilizamos:
+
+```py
+modelo.fit(train_dataset,validation_data=train_dataset_val, epochs=ciclos_entrenamiento,callbacks=[paradaTemprana_cbk,tensorboard_cbk])
+```
+
+Para ver los resultados en tensorflow:
+
+```sh
+tensorboard --logdir=./entrena
+```
 
 # Validacion
 
@@ -899,3 +944,33 @@ model.compile(
              'class_output': [keras.metrics.CategoricalAccuracy()]},
     loss_weights={'score_output': 2., 'class_output': 1.})
 ```
+
+# Tasa de aprendizaje variable
+
+Una tecnica de optimizacion muy efectiva es definir una tasa de aprendizaje variable. Un caso habitual es hacer que la tasa de aprendizaje vaya disminuyendo, lo que se denomina __learning rate decay__. La tasa en que se reduce la _learning rate_ puede ser constante o variable. Por ejemplo vamos a reducirla en tasas de 96% en 10000 pasos:
+
+```py
+initial_learning_rate = 0.1
+lr_schedule = keras.optimizers.schedules.ExponentialDecay(
+    initial_learning_rate,
+    decay_steps=100000,
+    decay_rate=0.96,
+    staircase=True)
+```
+
+Ahora especificamos esta definicion en lugar de pasar un valor fijo:
+
+```py
+modelo.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=lr_schedule),
+              loss=tf.keras.losses.MeanSquaredError(),
+              metrics=[keras.metrics.mean_squared_error,tf.keras.metrics.Accuracy()])
+```
+
+Otras opciones disponibles son:
+
+- ExponentialDecay
+- PiecewiseConstantDecay
+- PolynomialDecay
+- InverseTimeDecay
+
+Si quisieramos basar la tasa de aprendizaje en otro factor, por ejemplo, el _validation loss_, tendriamos que usar un callback para ajustarla, ya que el optimizador no tiene acceso al _validation loss_. Esto es lo que hace un callback como __ReduceLROnPlateau callback__.

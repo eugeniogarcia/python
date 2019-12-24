@@ -31,6 +31,7 @@ x=x.reshape(-1,1)
 y=a*x**2+b*x+c-.1*x**3
 z=y+np.random.normal(0, sigma,y.shape)
 
+#datos para la validacion
 x_val=np.arange(-10,10,.5)
 x_val=x_val.reshape(-1,1)
 y_val=a*x_val**2+b*x_val+c-.1*x_val**3
@@ -40,6 +41,8 @@ z_val=y_val+np.random.normal(0, sigma,y_val.shape)
 plt.figure(1)
 lines = plt.plot(x, z)
 plt.setp(lines, color='b', linewidth=2.0)
+lines1 = plt.plot(x_val, z_val)
+plt.setp(lines1, color='g', linewidth=2.0)
 plt.title("Datos a estimar")
 plt.show()
 
@@ -57,6 +60,8 @@ z_val_corr=max(abs(z_val))
 plt.figure(2)
 lines = plt.plot(x/x_corr, z/z_corr)
 plt.setp(lines, color='b', linewidth=2.0)
+lines1 = plt.plot(x_val/x_val_corr, z_val/z_val_corr)
+plt.setp(lines1, color='g', linewidth=2.0)
 plt.title("Datos a estimar (escala)")
 plt.show()
 
@@ -71,14 +76,15 @@ train_dataset_val=tf.data.Dataset.from_tensor_slices(((x_val/x_val_corr).astype(
                                                   (z_val/z_val_corr).astype(np.float32))).shuffle(tot).batch(tam_muestra)
 
 #Callbacks
+#Callbacks. Tensorboard
 tensorboard_cbk=keras.callbacks.TensorBoard(
-  log_dir='.\entrena',
-  histogram_freq=0, 
-  embeddings_freq=0,
-  write_graph=False, 
-  write_images=False,
-  update_freq='batch')
+  log_dir='.\\entrena',
+  histogram_freq=1, 
+  update_freq='epoch',
+#  update_freq='batch',
+  profile_batch = 0)
 
+#Callbacks. Parada anticipada del entrenamiento
 paradaTemprana_cbk=keras.callbacks.EarlyStopping(
         # Observa la funcion de perdida - tipicamente usariamos val_loss en lugar de loss
         monitor='val_loss',
@@ -88,13 +94,20 @@ paradaTemprana_cbk=keras.callbacks.EarlyStopping(
         patience=6,
         verbose=1)
 
-#Loop de entrenamiento
+#Tasa de aprendizaje variable
+initial_learning_rate = 0.1
+lr_schedule = keras.optimizers.schedules.ExponentialDecay(
+    initial_learning_rate,
+    decay_steps=100000,
+    decay_rate=0.96,
+    staircase=True)
 
-modelo.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
+#Loop de entrenamiento
+modelo.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=lr_schedule),
               loss=tf.keras.losses.MeanSquaredError(),
               metrics=[keras.metrics.mean_squared_error,tf.keras.metrics.Accuracy()])
 
-modelo.fit(train_dataset,validation_data=train_dataset_val, epochs=ciclos_entrenamiento,callbacks=[paradaTemprana_cbk])
+modelo.fit(train_dataset,validation_data=train_dataset_val, epochs=ciclos_entrenamiento,callbacks=[paradaTemprana_cbk,tensorboard_cbk])
 
 #######################
 #Inferencia
