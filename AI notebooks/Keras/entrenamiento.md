@@ -421,11 +421,236 @@ class miModelo(tf.keras.Model):
 
 # Personalizacion
 
-## Funcion de error
+## Personalizando la Funcion de error
 
-Hay tres formas en las que podemos personalizar la funcion de error:
+Para personalizar la funcion de error tenemos tres metodos:
 
-- Crear una funcion de python
-- Extender la clase base que implementa la funcion de error
-- Incluir como parte de la definicion de una capa personalizada la definicion del error
-- Incluir como parte de la definicion del modelo personalizado la definicion del error
+- Crear una funcion `python` que tome dos argumentos y retorne el error
+- Crear una clase que extienda la funcion base de error
+- Definiendo el error en la propia capa
+
+### Usar una funcion `python`
+
+Definimos una funcion:
+
+```py
+def basic_loss_function(y_true, y_pred):
+    return tf.math.reduce_mean(y_true - y_pred)
+```
+
+Ahora usamos la funcion al compilar el modelo:
+
+```py
+model.compile(optimizer=keras.optimizers.Adam(),loss=basic_loss_function)
+```
+
+### Extendiendo la clase base (`keras.losses.Loss`)
+
+Extendemos la clase base `keras.losses.Loss`. En el constructor pasamos todos los argumentos que necesitemos para inicializar la funcion:
+
+```py
+class miFuncionWeightedBinaryCrossEntropy(keras.losses.Loss):
+    def __init__(self, pos_weight, weight, from_logits=False,
+                 reduction=keras.losses.Reduction.AUTO,
+                 name='weighted_binary_crossentropy'):
+        super(miFuncionWeightedBinaryCrossEntropy, self).__init__(reduction=reduction, name=name)
+        self.pos_weight = pos_weight
+        self.weight = weight
+        self.from_logits = from_logits
+
+    def call(self, y_true, y_pred):
+        if not self.from_logits:
+            x_1 = y_true * self.pos_weight * -tf.math.log(y_pred + 1e-6)
+            x_2 = (1 - y_true) * -tf.math.log(1 - y_pred + 1e-6)
+            return tf.add(x_1, x_2) * self.weight 
+        return tf.nn.weighted_cross_entropy_with_logits(y_true, y_pred, self.pos_weight) * self.weight
+```
+
+La funcion __call__ implementa la funcion de errores. En este caso estamos definiendo una funcion de clasificacion binaria. Una vez definida la clase la podemos utilizar:
+
+```py
+model.compile(optimizer=keras.optimizers.Adam(),loss=miFuncionWeightedBinaryCrossEntropy(0.5, 2))
+```
+
+### Definiendo el error en la propia capa
+
+Si el error que queremos definir no depende de la salida del modelo, si depende de otros cosas, por ejemplo del estado de una determinada capa, los dos metodos anteriores no nos van a ayudar. En este caso podemos aprovecharnos - de lo que ya comentamos al ver la definicion de capas personalizadas -, del error de la capa - o del modelo.
+
+```py
+class ActivityRegularizationLayer(layers.Layer):
+
+  def call(self, inputs):
+    self.add_loss(tf.reduce_sum(inputs) * 0.1)
+    return inputs 
+```
+
+Aqui podemos ver como hemos usado la funcion __add_loss__ para añadir un error. Este error se unira al resto de errores definidos en las capas, y al error del modelo.
+
+## Personalizando las metricas
+
+Para crear una metrica personalizada tenemos dos metodos:
+
+- Crear una clase que extienda la funcion base de metricas
+- Definiendo la metrica en la propia capa o a nivel de modelo
+
+### Extendiendo la clase base (`keras.metrics.Metric`)
+
+Extendemos la clase base `keras.metrics.Metric`:
+```py
+class miMetrica(keras.metrics.Metric):
+
+    def __init__(self, name='categorical_true_positives', **kwargs):
+      super(miMetrica, self).__init__(name=name, **kwargs)
+      self.true_positives = self.add_weight(name='tp', initializer='zeros')
+
+    def update_state(self, y_true, y_pred, sample_weight=None):
+      y_pred = tf.reshape(tf.argmax(y_pred, axis=1), shape=(-1, 1))
+      values = tf.cast(y_true, 'int32') == tf.cast(y_pred, 'int32')
+      values = tf.cast(values, 'float32')
+      if sample_weight is not None:
+        sample_weight = tf.cast(sample_weight, 'float32')
+        values = tf.multiply(values, sample_weight)
+      self.true_positives.assign_add(tf.reduce_sum(values))
+
+    def result(self):
+      return self.true_positives
+
+    def reset_states(self):
+      # The state of the metric will be reset at the start of each epoch.
+      self.true_positives.assign(0.)
+```
+
+Para crear una metrica de este modo hay que seguir los siguientes pasos:
+
+- Usar el constructor para pasar aquellos argumentos que necesite nuestra metrica, y definir la variable en la que guardaremos la metrica
+- Implementar los metodos:
+	- reset_states. Inicializar la metrica. Se invocara con cada epoch de training
+	- update_state. Actualizar la metrica. Se invocara durante el entrenamiento del modelo
+	- result. Recupera el valor de la metrica
+	
+En el constructor creamos la variable en la que se guardara la metrica usando el metodo __add_weight__:
+
+```py
+    def __init__(self, name='mi_categorical_true_positives', **kwargs):
+      super(miMetrica, self).__init__(name=name, **kwargs)
+      self.true_positives = self.add_weight(name='tp', initializer='zeros')
+```
+
+Con __reset_states__ inicializamos la metrica. En este caso le damos el valor 0:
+
+```py
+self.true_positives.assign(0.)
+```
+
+Durante el entrenamiento del modelo se actualizara la metrica usando el metodo __update_state__:
+
+```py
+    def update_state(self, y_true, y_pred, sample_weight=None):
+	  # Crea un tensor (None,1) con el valor maximo de cada muestra
+      y_pred = tf.reshape(tf.argmax(y_pred, axis=1), shape=(-1, 1))
+      values = tf.cast(y_true, 'int32') == tf.cast(y_pred, 'int32')
+      values = tf.cast(values, 'float32')
+      if sample_weight is not None:
+        sample_weight = tf.cast(sample_weight, 'float32')
+        values = tf.multiply(values, sample_weight)
+      self.true_positives.assign_add(tf.reduce_sum(values))
+```
+
+Finalmente debemos implementar __result__ para obtener el valor de la metrica:
+
+```py
+return self.true_positives
+```
+
+Para utilizar la metrica custom:
+
+```py
+model.compile(optimizer=keras.optimizers.RMSprop(learning_rate=1e-3),
+              loss=keras.losses.SparseCategoricalCrossentropy(),
+              metrics=[miMetrica()])
+```
+
+Durante el entrenamiento se calculara esta metrica:
+
+```py
+Train on 50000 samples
+Epoch 1/3
+50000/50000 [==============================] - 3s 50us/sample - loss: 0.2016 - mi_categorical_true_positives: 46924.0000
+Epoch 2/3
+50000/50000 [==============================] - 2s 42us/sample - loss: 0.0778 - mi_categorical_true_positives: 48838.0000
+Epoch 3/3
+50000/50000 [==============================] - 2s 41us/sample - loss: 0.0656 - mi_categorical_true_positives: 49010.0000
+```
+
+### Definiendo el error en la propia capa o en el modelo
+
+```py
+class MetricLoggingLayer(layers.Layer):
+
+  def call(self, inputs):
+    self.add_metric(keras.backend.std(inputs),
+                    name='mi_std_of_activation',
+                    aggregation='mean')
+    return inputs 
+```
+
+Al utilizar esta capa se incluira la metrica _mi_std_of_activation_ - y nada mas, porque la capa hace solo de pass-through. La metrica calcula la media de los _keras.backend.std(inputs)_.
+
+```py
+Train on 50000 samples
+50000/50000 [==============================] - 2s 50us/sample - loss: 0.3394 - mi_std_of_activation: 0.9428
+```
+
+Podriamos usar el modelo en lugar de la capa:
+
+```py
+inputs = keras.Input(shape=(784,), name='digits')
+x1 = layers.Dense(64, activation='relu', name='dense_1')(inputs)
+x2 = layers.Dense(64, activation='relu', name='dense_2')(x1)
+outputs = layers.Dense(10, activation='softmax', name='predictions')(x2)
+model = keras.Model(inputs=inputs, outputs=outputs)
+
+model.add_loss(tf.reduce_sum(x1) * 0.1)
+
+model.add_metric(keras.backend.std(x1),
+                 name='std_of_activation',
+                 aggregation='mean')
+
+model.compile(optimizer=keras.optimizers.RMSprop(1e-3),
+              loss='sparse_categorical_crossentropy')
+model.fit(x_train, y_train,
+          batch_size=64,
+          epochs=1)
+```
+
+Observese como usamos __model.add_loss__ y __model.add_metric__.
+
+# Validacion
+
+Durante el entrenamiento del modelo debemos apartar una serie de datos de entrada para la validacion - y que no se usen para el entrenamiento. Podemos hacer esto de tres formas:
+
+- Cuando se usen _numpy arrays_ podemos simplemente especificarlo con un % - en este caso 0.2 o lo que es lo mismo, 20%:
+
+```py
+model.fit(x_train, y_train, batch_size=64, validation_split=0.2, epochs=3)
+```
+
+- Usando dos sets de _numpy arrays_. Un par para entrenamiento y otro para validacion:
+- Usando dos datasets, uno para entrenamiento y otro para validacion:
+
+```py
+model = get_compiled_model()
+
+# Prepare the training dataset
+train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train)).shuffle(buffer_size=1024).batch(64)
+
+# Prepare the validation dataset
+val_dataset = tf.data.Dataset.from_tensor_slices((x_val, y_val)).batch(64)
+```
+
+```py
+model.fit(train_dataset, epochs=3,validation_data=val_dataset, validation_steps=10)
+```
+
+# Sample weighting and class weighting
+
