@@ -625,6 +625,115 @@ model.fit(x_train, y_train,
 
 Observese como usamos __model.add_loss__ y __model.add_metric__.
 
+## Personalizando Callbacks (`tf.keras.callbacks.Callback`)
+
+Extendemos la clase `tf.keras.callbacks.Callback`:
+
+```py
+class miCustomCallback(tf.keras.callbacks.Callback):
+
+  def on_train_batch_begin(self, batch, logs=None):
+    print('Training: batch {} begins at {}'.format(batch, datetime.datetime.now().time()))
+
+  def on_train_batch_end(self, batch, logs=None):
+    print('Training: batch {} ends at {}'.format(batch, datetime.datetime.now().time()))
+
+  def on_test_batch_begin(self, batch, logs=None):
+    print('Evaluating: batch {} begins at {}'.format(batch, datetime.datetime.now().time()))
+
+  def on_test_batch_end(self, batch, logs=None):
+    print('Evaluating: batch {} ends at {}'.format(batch, datetime.datetime.now().time()))
+```
+
+Ya podemos usar el callback:
+
+```py
+model = get_model()
+_ = model.fit(x_train, y_train,batch_size=64,epochs=1,steps_per_epoch=5,verbose=0,
+          callbacks=[miCustomCallback()])
+```
+
+Podemos usar callbacks en los siguientes metodos:
+
+- fit(), fit_generator()
+- evaluate(), evaluate_generator()
+- predict(), predict_generator()
+
+```py
+_ = model.evaluate(x_test, y_test, batch_size=128, verbose=0, steps=5,
+          callbacks=[miCustomCallback()])
+```
+
+- on_(train|test|predict)_begin(self, logs=None)
+Called at the beginning of fit/evaluate/predict.
+
+- on_(train|test|predict)_end(self, logs=None)
+Called at the end of fit/evaluate/predict.
+
+- on_(train|test|predict)_batch_begin(self, batch, logs=None)
+Called right before processing a batch during training/testing/predicting. Within this method, logs is a dict with batch and size available keys, representing the current batch number and the size of the batch.
+
+- on_(train|test|predict)_batch_end(self, batch, logs=None)
+Called at the end of training/testing/predicting a batch. Within this method, logs is a dict containing the stateful metrics result.
+
+In addition, for training, following are provided.
+
+- on_epoch_begin(self, epoch, logs=None)
+Called at the beginning of an epoch during training.
+
+- on_epoch_end(self, epoch, logs=None)
+Called at the end of an epoch during training.
+
+## Parar el entrenamiento
+
+```py
+class EarlyStoppingAtMinLoss(tf.keras.callbacks.Callback):
+  """Stop training when the loss is at its min, i.e. the loss stops decreasing.
+
+  Arguments:
+      patience: Number of epochs to wait after min has been hit. After this
+      number of no improvement, training stops.
+  """
+
+  def __init__(self, patience=0):
+    super(EarlyStoppingAtMinLoss, self).__init__()
+
+    self.patience = patience
+
+    # best_weights to store the weights at which the minimum loss occurs.
+    self.best_weights = None
+
+  def on_train_begin(self, logs=None):
+    # The number of epoch it has waited when loss is no longer minimum.
+    self.wait = 0
+    # The epoch the training stops at.
+    self.stopped_epoch = 0
+    # Initialize the best as infinity.
+    self.best = np.Inf
+
+  def on_epoch_end(self, epoch, logs=None):
+    current = logs.get('loss')
+    if np.less(current, self.best):
+      self.best = current
+      self.wait = 0
+      # Record the best weights if current results is better (less).
+      self.best_weights = self.model.get_weights()
+    else:
+      self.wait += 1
+      if self.wait >= self.patience:
+        self.stopped_epoch = epoch
+        #Paramos el entrenamiento
+        self.model.stop_training = True
+        print('Restoring model weights from the end of the best epoch.')
+        self.model.set_weights(self.best_weights)
+
+  def on_train_end(self, logs=None):
+    if self.stopped_epoch > 0:
+      print('Epoch %05d: early stopping' % (self.stopped_epoch + 1))
+```
+
+Notese como con __self.model.stop_training__ podemos para el entrenamiento.
+
 # Validacion
 
 Durante el entrenamiento del modelo debemos apartar una serie de datos de entrada para la validacion - y que no se usen para el entrenamiento. Podemos hacer esto de tres formas:
@@ -654,3 +763,139 @@ model.fit(train_dataset, epochs=3,validation_data=val_dataset, validation_steps=
 
 # Sample weighting and class weighting
 
+Para aquellos casos en los que necesitemos dar mas importancia a unos datos de prueba sobre otros, la solucion es usar `weighting`. Podamos usar `weighting` de dos formas:
+
+- En los datos de prueba. Determinados datos de entrada toman mas importancia en el calculo de la salida
+- En la clases de salida. Un error en las clases de salida tiene diferente peso para unas clases que otras
+
+Si entrenamos el modelo con datos de __numpy__ usaremos los argumentos __sample_weight__ y __class_weight__. Si entrenamos con __Datasets__ usaremos una tupla __(input_batch, target_batch, sample_weight_batch)__.
+
+En este ejemplo damos preeminencia a la clase _5_. En este ejemplo el peso de la clase 5 es el doble que el resto:
+
+```py
+class_weight = {0: 1., 1: 1., 2: 1., 3: 1., 4: 1.,
+                5: 2.,
+                6: 1., 7: 1., 8: 1., 9: 1.}
+
+model.fit(x_train, y_train,
+          class_weight=class_weight,
+          batch_size=64,
+          epochs=4)
+```
+
+Podriamos usar esta tecnica si, por ejemplo, tuvieramos menos datos para entrenar para la clase 5. En el siguiente ejemplo usamos pesos para los datos de entrada para hacer algo equivalente:
+
+```py
+
+# Identificamos aquellos casos de prueba que corresponden a la clase `5`, y les asignamos un peso doble
+sample_weight = np.ones(shape=(len(y_train),))
+sample_weight[y_train == 5] = 2.
+
+model = get_compiled_model()
+model.fit(x_train, y_train,
+          sample_weight=sample_weight,
+          batch_size=64,
+          epochs=4)
+```
+
+Los dos ejemplo anteriores son con datos de ´numpy`. Con `Datasets`:
+
+```py
+sample_weight = np.ones(shape=(len(y_train),))
+sample_weight[y_train == 5] = 2.
+
+train_dataset = tf.data.Dataset.from_tensor_slices( (x_train, y_train, sample_weight) )
+
+train_dataset = train_dataset.shuffle(buffer_size=1024).batch(64)
+
+model = get_compiled_model()
+model.fit(train_dataset, epochs=3)
+```
+
+# Modelos con multiples entradas y salidas
+
+## Definir el modelo
+
+Podemos usar modelos con varias entradas y/o salidas usando la api funcional de Keras. En este ejemplo vamos a definir dos entradas:
+
+- Una imagen 32x32 con 3 canales
+- Un time series de vectores con 10 features, y con `None` series. No hemos especificado cuantas instancias tiene la serie, de ahi el `None`.
+
+```py
+from tensorflow import keras
+from tensorflow.keras import layers
+
+image_input = keras.Input(shape=(32, 32, 3), name='img_input')
+timeseries_input = keras.Input(shape=(None, 10), name='ts_input')
+```
+
+Usamos a continuacion ambas entradas para alimentar el modelo:
+
+```py
+x1 = layers.Conv2D(3, 3)(image_input)
+x1 = layers.GlobalMaxPooling2D()(x1)
+
+x2 = layers.Conv1D(3, 3)(timeseries_input)
+x2 = layers.GlobalMaxPooling1D()(x2)
+```
+
+Y las salidas de ambos convergen ahora. En este caso las concatenamos:
+
+```py
+x = layers.concatenate([x1, x2])
+
+score_output = layers.Dense(1, name='score_output')(x)
+class_output = layers.Dense(5, activation='softmax', name='class_output')(x)
+```
+
+Notese como hemos especificado el nombre a las dos capas de salida. El modelo se crea:
+
+```py
+model = keras.Model(inputs=[image_input, timeseries_input],
+                    outputs=[score_output, class_output])
+```
+
+Podemos visualizar el modelo:
+
+```py
+keras.utils.plot_model(model, 'multi_input_and_output_model.png', show_shapes=True)
+```
+
+## Compilar el modelo
+
+A la hora de compilar el modelo
+
+```py
+model.compile(
+    optimizer=keras.optimizers.RMSprop(1e-3),
+    loss=[keras.losses.MeanSquaredError(),
+          keras.losses.CategoricalCrossentropy()],
+    metrics=[[keras.metrics.MeanAbsolutePercentageError(),
+              keras.metrics.MeanAbsoluteError()],
+             [keras.metrics.CategoricalAccuracy()]])
+```
+
+o de forma equivalente:
+
+```py
+model.compile(
+    optimizer=keras.optimizers.RMSprop(1e-3),
+    loss={'score_output': keras.losses.MeanSquaredError(),
+          'class_output': keras.losses.CategoricalCrossentropy()},
+    metrics={'score_output': [keras.metrics.MeanAbsolutePercentageError(),
+                              keras.metrics.MeanAbsoluteError()],
+             'class_output': [keras.metrics.CategoricalAccuracy()]})
+```
+
+Podemos tambien especificar que la contribucion al error de cada _rama_ del modelo no sea igual. En este ejemplo hacemos que `score_output` pesa el doble que `class_output`.
+
+```py
+model.compile(
+    optimizer=keras.optimizers.RMSprop(1e-3),
+    loss={'score_output': keras.losses.MeanSquaredError(),
+          'class_output': keras.losses.CategoricalCrossentropy()},
+    metrics={'score_output': [keras.metrics.MeanAbsolutePercentageError(),
+                              keras.metrics.MeanAbsoluteError()],
+             'class_output': [keras.metrics.CategoricalAccuracy()]},
+    loss_weights={'score_output': 2., 'class_output': 1.})
+```

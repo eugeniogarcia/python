@@ -7,35 +7,11 @@ import matplotlib.pyplot as plt
 #######################
 #Define el modelo
 #######################
-class Cuadratica(layers.Layer):
-
-  def __init__(self):
-    super(Cuadratica, self).__init__()
-   
-    
-  def build(self, input_shape):
-    self.a = self.add_weight(shape=(input_shape[-1],1),
-                             initializer='random_normal',
-                             dtype=tf.float32,
-                             trainable=True,
-                             name="a")
-    self.b = self.add_weight(shape=(input_shape[-1],1),
-                             initializer='random_normal',
-                             dtype=tf.float32,
-                             trainable=True,
-                             name="b")
-    self.c = self.add_weight(shape=1,
-                             dtype=tf.float32,
-                             initializer='zeros',
-                             trainable=True,
-                             name="c")
-
-  def call(self, inputs):
-    x=((inputs**2) * self.a) + (inputs * self.b) + self.c
-    return x
 
 modelo=Sequential()
-modelo.add(Cuadratica())
+modelo.add(layers.Dense(10, activation='sigmoid', name='dense_1', input_shape=(1,)))
+modelo.add(layers.Dense(10, activation='sigmoid', name='dense_2'))
+modelo.add(layers.Dense(1, activation='sigmoid', name='dense_3'))
 
 #######################
 #Prepara los datos
@@ -80,26 +56,17 @@ plt.show()
 #Prepara el dataset
 tot=len(x)
 tam_muestra=10
-
+ciclos_entrenamiento=200
 train_dataset=tf.data.Dataset.from_tensor_slices(((x/x_corr).astype(np.float32),
-                                                  (z/z_corr).astype(np.float32))).repeat().shuffle(tot).batch(tam_muestra)
+                                                  (z/z_corr).astype(np.float32))).shuffle(tot).batch(tam_muestra)
 
+#Loop de entrenamiento
 
-#loop de entrenamiento
+modelo.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
+              loss=tf.keras.losses.MeanSquaredError(),
+              metrics=[keras.metrics.mean_squared_error])
 
-optimizer =tf.keras.optimizers.Adam(learning_rate=1e-3)
-loss_fn=tf.keras.losses.MeanSquaredError()
-
-epochs=200
-for x_batch_train, y_batch_train in train_dataset.take(int(epochs*tot/tam_muestra)):
-  with tf.GradientTape() as tape:
-    resp_est = modelo(x_batch_train)
-    error = loss_fn(y_batch_train, resp_est)
-    error+= sum(modelo.losses)
-  
-  grads = tape.gradient(error, modelo.trainable_weights)
-  optimizer.apply_gradients(zip(grads, modelo.trainable_weights))
-
+modelo.fit(train_dataset, epochs=ciclos_entrenamiento)
 
 #######################
 #Inferencia
@@ -115,9 +82,3 @@ lines2 = plt.plot(x,z)
 plt.setp(lines, color='g', linewidth=2.0)
 plt.setp(lines2, color='b', linewidth=2.0)
 plt.show()
-
-
-print(np.mean(abs(y_est-z))/tot)
-print("a={}".format(modelo.weights[0]/(x_corr**2)*z_corr))
-print("b={}".format(modelo.weights[1]/x_corr*z_corr))
-print("c={}".format(modelo.weights[2]*z_corr))
