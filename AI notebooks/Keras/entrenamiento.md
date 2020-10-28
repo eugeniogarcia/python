@@ -214,7 +214,7 @@ capa_cuadratica= Cuadratica_v3(4)
 
 ## Combinar capas
 
-Las capas se pueden convinar. Por ejemplo, podriamos definir una capa linea, y luego convinarla para crear una cuadratica. La lineal seria:
+Las capas se pueden combinar. Por ejemplo, podriamos definir una capa linea, y luego combinarla para crear una cuadratica. La lineal seria:
 
 ```py
 class Lineal_v1(layers.Layer):
@@ -238,7 +238,7 @@ class Lineal_v1(layers.Layer):
     return tf.matmul(inputs, self.a) + self.b
 ```
 
-Nada nuevo en la definicion de esta capa. Veamos ahora como podemos convinar varias capas para dar lugar a otra. Aqui usamos dos lineales, con una activacion `relu` para dar lugar a una capa que deberia ser capaz de aprender un modelo cuadratico:
+Nada nuevo en la definicion de esta capa. Veamos ahora como podemos combinar varias capas para dar lugar a otra. Aqui usamos dos lineales, con una activacion `relu` para dar lugar a una capa que deberia ser capaz de aprender un modelo cuadratico:
 
 ```py
 class Cuadratica_v4(layers.Layer):
